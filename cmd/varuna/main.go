@@ -290,7 +290,7 @@ func scriptDarkTransit(ch chan<- engine.AISMessage, zones []engine.Zone) {
 	defer scriptMu.Unlock()
 
 	// Vessel approaches Gulf of Mannar boundary, then goes dark
-	ts := time.Now().UnixMilli()
+	ts := time.Now().UnixMilli() - 150000
 	vesselID := "V-DARK-001"
 	mmsi := "999000001"
 

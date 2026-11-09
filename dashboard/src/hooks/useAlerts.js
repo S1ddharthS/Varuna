@@ -8,18 +8,28 @@ export function useAlerts(url) {
 
   useEffect(() => {
     messageHandlerRef.current = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === 'alerts_dropped') {
-        setDroppedCount(prev => prev + data.count);
-        return;
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'alerts_dropped') {
+          setDroppedCount(prev => prev + data.count);
+          return;
+        }
+        
+        setAlerts(prev => {
+          const existingIdx = prev.findIndex(a => a.alert_id === data.alert_id);
+          if (existingIdx >= 0) {
+            const next = [...prev];
+            next[existingIdx] = { ...next[existingIdx], ...data };
+            return next;
+          }
+          const next = [data, ...prev];
+          if (next.length > 100) next.length = 100;
+          return next;
+        });
+      } catch (err) {
+        // ignore parse error
       }
-      
-      setAlerts(prev => {
-        const next = [data, ...prev];
-        if (next.length > 100) next.length = 100;
-        return next;
-      });
     };
   }, [messageHandlerRef]);
 

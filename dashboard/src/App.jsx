@@ -20,15 +20,45 @@ function App() {
   
   const [selectedAlertId, setSelectedAlertId] = useState(null);
   
+  if (typeof window !== 'undefined') {
+    window.__alerts = alerts;
+    window.__selectedAlertId = selectedAlertId;
+    window.__selectAlert = setSelectedAlertId;
+  }
+  
   const isConnected = positionsStatus === 'CONNECTED' && alertsStatus === 'CONNECTED';
 
   return (
     <div className="app-container">
       {!isConnected && (
         <div className="connecting-overlay">
-          Connecting to server...
+          Connecting to Varuna Engine...
         </div>
       )}
+
+      {/* Top Tactical Command Header */}
+      <header className="top-command-bar">
+        <div className="brand-section">
+          <div className="radar-icon">⚓</div>
+          <div>
+            <div className="system-title">VARUNA // MARITIME SURVEILLANCE CORE</div>
+            <div className="system-subtitle">DEFENSE RECONNAISSANCE · REAL-TIME AIS ANOMALY DETECTION · ZERO-BROKER REFLEX</div>
+          </div>
+        </div>
+
+        <div className="status-badges">
+          <div className="status-chip chip-green">
+            <span className="dot pulse-green"></span>
+            <span>INGESTION: ACTIVE</span>
+          </div>
+          <div className="status-chip chip-blue">
+            <span>INDEX: O(1) SPATIAL GRID</span>
+          </div>
+          <div className="status-chip chip-purple">
+            <span>CORROBORATION: SENTINEL-1 SAR</span>
+          </div>
+        </div>
+      </header>
 
       <div className="map-layer">
         <MapView 

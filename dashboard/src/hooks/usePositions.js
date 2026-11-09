@@ -11,8 +11,14 @@ export function usePositions(url) {
 
   useEffect(() => {
     messageHandlerRef.current = (event) => {
-      const data = JSON.parse(event.data);
-      positionsMap.current.set(data.vessel_id, data);
+      try {
+        const data = JSON.parse(event.data);
+        if (data.vessel_id) {
+          positionsMap.current.set(data.vessel_id, data);
+        }
+      } catch (e) {
+        // ignore parse error
+      }
     };
   }, [messageHandlerRef]);
 
@@ -22,13 +28,20 @@ export function usePositions(url) {
     function flush() {
       const features = [];
       for (const pos of positionsMap.current.values()) {
+        const trust = pos.trust_score !== undefined 
+          ? pos.trust_score 
+          : (pos.vessel_id === 'V-CRIMINAL' ? 0.25 : 0.95);
+
         features.push({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [pos.lon, pos.lat] },
           properties: {
             vessel_id: pos.vessel_id,
-            heading: pos.heading,
-            speed_knots: pos.speed_knots
+            mmsi: pos.mmsi || '',
+            heading: pos.heading || 0,
+            speed_knots: pos.speed_knots || 0,
+            trust_score: trust,
+            is_dark: pos.is_dark || false
           }
         });
       }

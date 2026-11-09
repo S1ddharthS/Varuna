@@ -305,6 +305,10 @@ func (e *Engine) Corroborate(alertID string, source string, evidence map[string]
 		}
 		a.Evidence[k] = v
 	}
+	select {
+	case e.alertCh <- *a:
+	default:
+	}
 }
 
 // GetAlert returns an alert by ID (for corroboration verification).

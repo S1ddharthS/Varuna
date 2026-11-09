@@ -7,61 +7,74 @@ export default function MapView({ positionsGeoJson, alerts, selectedAlertId }) {
   const map = useRef(null);
   
   useEffect(() => {
-    if (map.current) return; // initialize map only once
+    if (map.current) return;
     
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-      center: [72.0, 15.0], // Indian Ocean / South Asia — live AIS traffic dense here
-      zoom: 3,
+      center: [77.5, 9.8],
+      zoom: 6.2,
+      pitch: 20,
       interactive: true
     });
+
+    if (typeof window !== 'undefined') {
+      window.__map = map.current;
+    }
+
+    map.current.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
     
     map.current.on('load', () => {
-      // Add Vessels
-      map.current.addSource('vessels', {
+      // 1. Add Maritime Zones GeoJSON
+      map.current.addSource('maritime-zones', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
+        data: zones
       });
-      
-      // Circle marker — trust score drives colour; red pulse for low-trust vessels
+
+      // Zones fill layer
       map.current.addLayer({
-        id: 'vessels-layer',
-        type: 'circle',
-        source: 'vessels',
+        id: 'zones-fill-layer',
+        type: 'fill',
+        source: 'maritime-zones',
         paint: {
-          'circle-radius': 4,
-          'circle-color': [
-            'case',
-            ['<', ['get', 'trust_score'], 0.5], '#ef4444',
-            ['<=', ['get', 'trust_score'], 0.8], '#f59e0b',
-            '#10b981'
-          ],
-          'circle-stroke-width': 1,
-          'circle-stroke-color': 'rgba(0,0,0,0.4)',
-          'circle-opacity': [
-            'case',
-            ['==', ['get', 'is_dark'], true], 0.4,
-            1.0
-          ]
+          'fill-color': ['get', 'fill_color'],
+          'fill-opacity': 0.35
         }
       });
-      
-      // Pulsing aura for spoofed / low-trust vessels
+
+      // Zones boundary line
       map.current.addLayer({
-        id: 'vessels-pulse-layer',
-        type: 'circle',
-        source: 'vessels',
-        filter: ['<', ['get', 'trust_score'], 0.5],
+        id: 'zones-outline-layer',
+        type: 'line',
+        source: 'maritime-zones',
         paint: {
-          'circle-radius': 10,
-          'circle-color': '#ef4444',
-          'circle-opacity': 0.35,
-          'circle-pitch-alignment': 'map'
+          'line-color': ['get', 'stroke_color'],
+          'line-width': 2,
+          'line-dasharray': [4, 2]
         }
       });
-      
-      // Add Alert Cones / Dotted Lines
+
+      // Zones label layer
+      map.current.addLayer({
+        id: 'zones-labels',
+        type: 'symbol',
+        source: 'maritime-zones',
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-size': 11,
+          'text-font': ['Open Sans Regular'],
+          'text-anchor': 'center',
+          'text-transform': 'uppercase',
+          'text-letter-spacing': 0.1
+        },
+        paint: {
+          'text-color': '#e2e8f0',
+          'text-halo-color': 'rgba(15, 23, 42, 0.95)',
+          'text-halo-width': 2
+        }
+      });
+
+      // 2. Add Alert Cone / Dotted Projection Line
       map.current.addSource('alert-path', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -72,13 +85,44 @@ export default function MapView({ positionsGeoJson, alerts, selectedAlertId }) {
         type: 'line',
         source: 'alert-path',
         paint: {
-          'line-color': '#FFB347',
-          'line-width': 3,
-          'line-dasharray': [2, 2] // Dotted line per spec
+          'line-color': [
+            'case',
+            ['==', ['get', 'is_conflict'], true], '#ef4444',
+            '#f59e0b'
+          ],
+          'line-width': 3.5,
+          'line-dasharray': [3, 2]
         }
       });
-      
-      // For identity conflicts, show two red dots
+
+      // Alert dead-reckoning cone polygon
+      map.current.addSource('alert-cone', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+
+      map.current.addLayer({
+        id: 'alert-cone-layer',
+        type: 'fill',
+        source: 'alert-cone',
+        paint: {
+          'fill-color': '#f59e0b',
+          'fill-opacity': 0.35
+        }
+      });
+
+      map.current.addLayer({
+        id: 'alert-cone-outline',
+        type: 'line',
+        source: 'alert-cone',
+        paint: {
+          'line-color': '#fbbf24',
+          'line-width': 2,
+          'line-dasharray': [3, 2]
+        }
+      });
+
+      // 3. For identity conflicts, show two red dots
       map.current.addSource('identity-conflict', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -89,10 +133,71 @@ export default function MapView({ positionsGeoJson, alerts, selectedAlertId }) {
         type: 'circle',
         source: 'identity-conflict',
         paint: {
-          'circle-radius': 8,
-          'circle-color': '#E74C3C',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#fff'
+          'circle-radius': 12,
+          'circle-color': '#ef4444',
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': '#ffffff'
+        }
+      });
+
+      // 4. Add Live AIS Vessels Source
+      map.current.addSource('vessels', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+
+      // Vessels Aura / Pulse for low-trust or spoofed vessels
+      map.current.addLayer({
+        id: 'vessels-pulse-layer',
+        type: 'circle',
+        source: 'vessels',
+        filter: ['<', ['coalesce', ['get', 'trust_score'], 1.0], 0.5],
+        paint: {
+          'circle-radius': 14,
+          'circle-color': '#ef4444',
+          'circle-opacity': 0.4
+        }
+      });
+      
+      // Vessels core marker
+      map.current.addLayer({
+        id: 'vessels-layer',
+        type: 'circle',
+        source: 'vessels',
+        paint: {
+          'circle-radius': 6,
+          'circle-color': [
+            'case',
+            ['<', ['coalesce', ['get', 'trust_score'], 1.0], 0.5], '#ef4444',
+            ['<=', ['coalesce', ['get', 'trust_score'], 1.0], 0.8], '#f59e0b',
+            '#10b981'
+          ],
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-opacity': [
+            'case',
+            ['==', ['get', 'is_dark'], true], 0.3,
+            1.0
+          ]
+        }
+      });
+
+      // Vessel ID labels
+      map.current.addLayer({
+        id: 'vessels-labels',
+        type: 'symbol',
+        source: 'vessels',
+        layout: {
+          'text-field': ['get', 'vessel_id'],
+          'text-size': 10,
+          'text-offset': [0, 1.2],
+          'text-anchor': 'top',
+          'text-font': ['Open Sans Regular']
+        },
+        paint: {
+          'text-color': '#f8fafc',
+          'text-halo-color': 'rgba(15, 23, 42, 0.9)',
+          'text-halo-width': 1.5
         }
       });
     });
@@ -112,9 +217,9 @@ export default function MapView({ positionsGeoJson, alerts, selectedAlertId }) {
     if (!map.current) return;
     let animationId;
     const animateMarker = (timestamp) => {
-      if (map.current.getLayer('vessels-pulse-layer')) {
-        const radius = (Math.sin(timestamp / 200) + 1) * 10 + 10;
-        const opacity = (Math.sin(timestamp / 200) + 1) * 0.25 + 0.1;
+      if (map.current.isStyleLoaded() && map.current.getLayer('vessels-pulse-layer')) {
+        const radius = (Math.sin(timestamp / 250) + 1) * 6 + 10;
+        const opacity = (Math.sin(timestamp / 250) + 1) * 0.2 + 0.15;
         map.current.setPaintProperty('vessels-pulse-layer', 'circle-radius', radius);
         map.current.setPaintProperty('vessels-pulse-layer', 'circle-opacity', opacity);
       }
@@ -129,39 +234,71 @@ export default function MapView({ positionsGeoJson, alerts, selectedAlertId }) {
     if (!map.current || !map.current.isStyleLoaded()) return;
     
     const pathSource = map.current.getSource('alert-path');
+    const coneSource = map.current.getSource('alert-cone');
     const idSource = map.current.getSource('identity-conflict');
     
     if (!selectedAlertId) {
       if (pathSource) pathSource.setData({ type: 'FeatureCollection', features: [] });
+      if (coneSource) coneSource.setData({ type: 'FeatureCollection', features: [] });
       if (idSource) idSource.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
     
     const alert = alerts.find(a => a.alert_id === selectedAlertId);
-    if (!alert) return;
+    if (!alert || !alert.position) return;
+
+    const { lat, lon } = alert.position;
     
-    // Draw dotted path or cone for suspected_dark_transit
-    if (alert.type === 'suspected_dark_transit') {
-      const { lat, lon } = alert.position;
-      // Simple projection for demo purposes
-      const features = [{
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: [
-            [lon, lat],
-            [lon + 0.5, lat + 0.5] // Fake projected path
-          ]
-        }
-      }];
-      if (pathSource) pathSource.setData({ type: 'FeatureCollection', features });
+    const t = (alert.type || '').toLowerCase();
+    
+    // Draw dotted path and uncertainty cone for suspected_dark_transit, illegal fishing, or boundary alerts
+    if (t.includes('dark') || t.includes('fishing') || t.includes('breach') || t.includes('geofence') || t.includes('loiter')) {
+      const headingRad = ((alert.evidence?.heading || 60) * Math.PI) / 180;
+      const coneLength = 0.55;
+      const spread = 0.35;
+
+      const p1 = [lon, lat];
+      const p2 = [lon + Math.sin(headingRad - spread) * coneLength, lat + Math.cos(headingRad - spread) * coneLength];
+      const p3 = [lon + Math.sin(headingRad + spread) * coneLength, lat + Math.cos(headingRad + spread) * coneLength];
+      const pCenter = [lon + Math.sin(headingRad) * coneLength, lat + Math.cos(headingRad) * coneLength];
+
+      if (pathSource) {
+        pathSource.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [p1, pCenter] },
+            properties: { label: 'Projected Dead Reckoning' }
+          }]
+        });
+      }
+
+      if (coneSource) {
+        coneSource.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [[p1, p2, p3, p1]] },
+            properties: { label: 'Uncertainty Re-entry Cone' }
+          }]
+        });
+      }
+
       if (idSource) idSource.setData({ type: 'FeatureCollection', features: [] });
+
+      map.current.jumpTo({ 
+        center: [lon, lat], 
+        zoom: 9.8, 
+        pitch: 45, 
+        bearing: -15
+      });
     } 
-    // Show both positions for identity conflict
-    else if (alert.type === 'identity_conflict') {
+    // Show both positions for identity conflict / spoofing
+    else if (t.includes('conflict') || t.includes('fraud') || t.includes('mmsi') || t.includes('spoof')) {
       const features = [{
         type: 'Feature',
-        geometry: { type: 'Point', coordinates: [alert.position.lon, alert.position.lat] }
+        geometry: { type: 'Point', coordinates: [alert.position.lon, alert.position.lat] },
+        properties: { tag: 'Transponder 1' }
       }];
       
       if (alert.evidence?.conflicting_position) {
@@ -170,15 +307,60 @@ export default function MapView({ positionsGeoJson, alerts, selectedAlertId }) {
           geometry: { 
             type: 'Point', 
             coordinates: [alert.evidence.conflicting_position.lon, alert.evidence.conflicting_position.lat] 
-          }
+          },
+          properties: { tag: 'Transponder 2 (Spoof)' }
         });
       }
       
       if (idSource) idSource.setData({ type: 'FeatureCollection', features });
-      if (pathSource) pathSource.setData({ type: 'FeatureCollection', features: [] });
+      if (pathSource) {
+        if (alert.evidence?.conflicting_position) {
+          pathSource.setData({
+            type: 'FeatureCollection',
+            features: [{
+              type: 'Feature',
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [alert.position.lon, alert.position.lat],
+                  [alert.evidence.conflicting_position.lon, alert.evidence.conflicting_position.lat]
+                ]
+              },
+              properties: { is_conflict: true }
+            }]
+          });
+        } else {
+          pathSource.setData({ type: 'FeatureCollection', features: [] });
+        }
+      }
+      if (coneSource) coneSource.setData({ type: 'FeatureCollection', features: [] });
+
+      // Focus camera between both conflicting vessels in Arabian Sea
+      const midLon = alert.evidence?.conflicting_position 
+        ? (alert.position.lon + alert.evidence.conflicting_position.lon) / 2 
+        : alert.position.lon;
+      const midLat = alert.evidence?.conflicting_position 
+        ? (alert.position.lat + alert.evidence.conflicting_position.lat) / 2 
+        : alert.position.lat;
+
+      map.current.jumpTo({ 
+        center: [midLon, midLat], 
+        zoom: 7.6, 
+        pitch: 35, 
+        bearing: 25
+      });
     } else {
       if (pathSource) pathSource.setData({ type: 'FeatureCollection', features: [] });
+      if (coneSource) coneSource.setData({ type: 'FeatureCollection', features: [] });
       if (idSource) idSource.setData({ type: 'FeatureCollection', features: [] });
+      
+      // Default reset view
+      map.current.jumpTo({ 
+        center: [77.5, 9.8], 
+        zoom: 5.6, 
+        pitch: 0, 
+        bearing: 0
+      });
     }
   }, [selectedAlertId, alerts]);
 

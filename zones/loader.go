@@ -31,8 +31,8 @@ type geoJSONFeature struct {
 }
 
 type geoJSONGeometry struct {
-	Type        string           `json:"type"`
-	Coordinates [][][][2]float64 `json:"coordinates"` // Polygon = [ring][point]
+	Type        string         `json:"type"`
+	Coordinates [][][2]float64 `json:"coordinates"` // Polygon = [ring][point][lon, lat]
 }
 
 // LoadZones parses the GeoJSON file at path and returns typed Zone values.
@@ -63,8 +63,8 @@ func LoadZones(path string) ([]Zone, error) {
 		if v, ok := f.Properties["boundary_buffer_km"].(float64); ok {
 			z.BoundaryBufferKm = v
 		}
-		if len(f.Geometry.Coordinates) > 0 && len(f.Geometry.Coordinates[0]) > 0 {
-			ring := f.Geometry.Coordinates[0][0]
+		if len(f.Geometry.Coordinates) > 0 {
+			ring := f.Geometry.Coordinates[0]
 			coords := make([][2]float64, len(ring))
 			copy(coords, ring)
 			z.Coordinates = [][][2]float64{coords}
