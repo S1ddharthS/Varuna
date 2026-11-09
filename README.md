@@ -6,24 +6,31 @@ One Go binary. No broker. 50,000+ vessel messages/sec. Millisecond alert latency
 
 ---
 
+## ⚓ Tactical Surveillance Console
+
+| 1. Regional Fleet Operations (Macro) | 2. Dark Transit Interception (Close-Up) | 3. Dual-Transponder Spoofing (Anomaly) |
+|:---:|:---:|:---:|
+| ![Regional Overview](screenshots/01_regional_surveillance_overview.png) | ![Dark Transit Interception](screenshots/02_tactical_interception_dark_fleet.png) | ![MMSI Spoofing Collision](screenshots/03_mmsi_telemetry_collision_fraud.png) |
+
+---
+
 ## Quick Start
 
-### Prerequisites
-
-- Go 1.22+
-- Python 3.11+ (for SAR inference only)
-- `pip install -r data/models/requirements.txt`
-- A pre-downloaded Sentinel-1 GRD tile in `data/sar/` (see `data/sar/README.md`)
-- SAR ONNX model at `data/models/yolov8n_sar_ssdd.onnx` (see below)
-
-### Run the generator + engine (standalone demo)
+### 1. Start the Core Engine (Go Backend)
 
 ```bash
-# Run with stub engine (no teammate 1 dependency)
-go run ./cmd/varuna -stub -vessels 200
+go run ./cmd/varuna
+# Engine starts on http://localhost:8080
+# Serves live SSE streams (/ws/positions, /ws/alerts) and metrics (/api/metrics)
+```
 
-# Run with real engine (teammate 1's package wired in)
-go run ./cmd/varuna -vessels 200
+### 2. Start the Tactical Dashboard (React Frontend)
+
+```bash
+cd dashboard
+npm install
+npm run dev
+# Dashboard launches at http://127.0.0.1:5173
 ```
 
 ### Run the benchmark
